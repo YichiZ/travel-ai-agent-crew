@@ -2,6 +2,7 @@ import uvicorn
 import asyncio
 import logging
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, Annotated
 from models.model import FlightRequest, HotelRequest, ItineraryRequest, AIResponse, WorkflowType
 from services.serp import SerpAPIService
@@ -17,6 +18,20 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Travel Planning API", version="1.1.0")
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite default dev server
+        "http://localhost:3000",  # Common React dev server
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/search_flights/", response_model=AIResponse)

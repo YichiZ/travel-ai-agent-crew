@@ -1,6 +1,6 @@
 # Travel AI Agent Crew
 
-Multi agent app for create travel itinerary using Gemini and CrewAI.
+AI-Powered Multi-Agent Travel App for Flights, Hotels, and Itineraries
 
 ## Getting Started
 
@@ -50,6 +50,29 @@ python main.py
 ```
 
 Play with the API at http://localhost:8000/docs.
+
+## Frontend
+
+1. **Navigate to frontend and install dependencies**
+
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. **Configure environment (optional)**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Run the frontend**
+
+   ```bash
+   npm run dev
+   ```
+
+   Frontend will be available at `http://localhost:5173`
 
 ## Features
 
