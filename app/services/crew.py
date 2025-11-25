@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 from crewai import Agent, Task, Crew, Process
-from models.model import WorkflowType, CreateTaskOptions
+from app.models.model import WorkflowType, CreateTaskOptions
 
 logger = logging.getLogger(__name__)
 

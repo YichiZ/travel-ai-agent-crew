@@ -1,30 +1,28 @@
 # Travel AI Agent Crew
 
-AI-Powered Multi-Agent Travel App for Flights, Hotels, and Itineraries
+AI-Powered Multi-Agent Travel App for Flights, Hotels, and Itineraries.
 
 ## Getting Started
 
-1. **Create a virtual environment**
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-
 1. **Install dependencies**
-   Using uv (faster):
+
+   Using uv (recommended, faster):
 
    ```bash
-   uv pip install -r requirements.txt
+   uv sync
    ```
+
+   This will create a virtual environment and install all dependencies from `pyproject.toml` and `uv.lock`.
 
    Using standard pip:
 
    ```bash
-   pip install -r requirements.txt
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -e .
    ```
 
-1. **Configure environment variables**
+2. **Configure environment variables**
 
    Create a `.env` file in the root directory:
 
@@ -37,19 +35,32 @@ AI-Powered Multi-Agent Travel App for Flights, Hotels, and Itineraries
 
 ### Running the Application
 
-**Using uv (faster):**
+**Using uv (recommended):**
 
 ```bash
-uv run main.py
+uv run fastapi dev
 ```
 
 **Standard:**
 
 ```bash
-python main.py
+source .venv/bin/activate
+python app/main.py
 ```
 
 Play with the API at http://localhost:8000/docs.
+
+## Deployment
+Use the `deploy.sh` file to push the backend docker to AWS ECR, then use AWS App Runner to deploy the image.
+
+Local:
+```bash
+# Build the image
+docker build -t travel-ai-agent-crew-api .
+
+# Run the container
+docker run -p 8080:8080 travel-ai-agent-crew-api
+```
 
 ## Frontend
 

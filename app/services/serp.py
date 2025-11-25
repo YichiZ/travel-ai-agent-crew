@@ -3,7 +3,7 @@ import logging
 from fastapi import HTTPException
 from serpapi import GoogleSearch
 from typing import Dict, List, Any, Union
-from models.model import FlightRequest, FlightInfo, HotelRequest, HotelInfo
+from app.models.model import FlightRequest, FlightInfo, HotelRequest, HotelInfo
 import os
 
 logger = logging.getLogger(__name__)

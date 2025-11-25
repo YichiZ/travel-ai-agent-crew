@@ -4,10 +4,10 @@ import './SearchForm.css';
 const SearchForm = ({ onSearch, isLoading }) => {
   const [formData, setFormData] = useState({
     origin: 'SFO',
-    destination: 'JFK',
+    destination: 'LAS',
     outboundDate: '2025-12-01',
     returnDate: '2025-12-15',
-    location: '',
+    location: 'Las Vegas',
     checkInDate: '',
     checkOutDate: '',
   });

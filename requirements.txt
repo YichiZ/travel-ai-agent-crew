@@ -1,8 +1,0 @@
-fastapi[standard]
-uvicorn
-pydantic
-google-search-results
-crewai
-python-dotenv
-google-generativeai
-crewai[google-genai]

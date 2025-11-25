@@ -16,19 +16,20 @@ Multi agent app for create travel itinerary using Gemini and CrewAI.
 
 ```
 travel-ai-agent-crew/
-├── main.py                 # FastAPI application & endpoints
+├── app/
+│   ├── main.py            # FastAPI application & endpoints
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── model.py       # Pydantic models & enums
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── crew.py        # CrewAI service (AI agents & tasks)
+│   │   └── serp.py        # SerpAPI integration
+│   └── helpers/
+│       ├── __init__.py
+│       └── helper.py      # Utility functions
 ├── requirements.txt        # Python dependencies
-├── .env                    # Environment variables (API keys)
-├── models/
-│   ├── __init__.py
-│   └── model.py           # Pydantic models & enums
-├── services/
-│   ├── __init__.py
-│   ├── crew.py            # CrewAI service (AI agents & tasks)
-│   └── serp.py            # SerpAPI integration
-└── helpers/
-    ├── __init__.py
-    └── helper.py          # Utility functions
+└── .env                    # Environment variables (API keys)
 ```
 
 ### AI Agent Workflow

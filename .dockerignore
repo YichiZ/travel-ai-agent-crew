@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# IDE
+.vscode/
+.claude/
+.cursor/
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+
+# Frontend (if not needed in backend image)
+frontend/
+
+# Deployment files
+deploy.sh
