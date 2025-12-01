@@ -4,6 +4,8 @@ from datetime import datetime
 from crewai import Agent, Task, Crew, Process
 from app.models.model import WorkflowType, CreateTaskOptions
 
+from crewai_tools import RagTool
+
 logger = logging.getLogger(__name__)
 
 
@@ -194,12 +196,39 @@ class CrewAIService:
             expected_output=f"A structured recommendation explaining the best {options.task_type.value} choice based on the analysis of provided details."
         )
 
+    def __get_blogger_agent(self) -> Agent:
+        """Get the travel tips tool."""
+        llm_model = "gemini/gemini-2.5-flash"
+
+        rag_tool = RagTool(
+        )
+
+        rag_tool.add(
+            data_type="website", url="https://www.nomadicmatt.com/travel-blogs/61-travel-tips/"
+        )
+
+        return Agent(
+            role="Travel Blogger",
+            goal="Create a travel blog post based on the itinerary provided",
+            backstory="A travel blogger who creates engaging and informative blog posts about the destinations and experiences.",
+            llm=llm_model,
+            verbose=False,
+            tools=[rag_tool],
+        )
+
     def __create_crew(self, workflow_type: WorkflowType, options: CreateTaskOptions) -> Crew:
         """Create a crew for the given workflow type."""
         agent = self.__get_agent(workflow_type)
         task = self.__create_task(agent, options)
+
+        agents = [agent]
+
+        if workflow_type == WorkflowType.TRAVEL:
+            agents.append(self.__get_blogger_agent())
+
         return Crew(
-            agents=[agent],
+            # Ensure correct type for Crew constructor (list[BaseAgent])
+            agents=list(agents),
             tasks=[task],
             process=Process.sequential,
             verbose=False
