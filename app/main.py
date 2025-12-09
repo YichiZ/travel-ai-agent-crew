@@ -1,4 +1,4 @@
-from app.models.model import FlightRequest, HotelRequest, ItineraryRequest, AIResponse, WorkflowType
+from app.models.model import FlightRequest, HotelRequest, ItineraryRequest, AIResponse, WorkflowType, ItineraryResponse
 import uvicorn
 import asyncio
 import logging
@@ -178,6 +178,61 @@ async def get_itinerary(
         logger.exception(f"Itinerary generation error: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Itinerary generation error: {str(e)}")
+
+
+@app.post("/generate_itinerary_from_conversation/", response_model=AIResponse)
+async def get_itinerary_from_conversation(
+    conversation_request: str,
+    crew_service: Annotated[CrewAIService, Depends()],
+    serp_service: Annotated[SerpAPIService, Depends()]
+):
+    """Generate an itinerary based on provided conversation."""
+
+    task = crew_service.create_itinerary_task(conversation_request)
+    itinerary_json = await crew_service.run_itinerary_task(task)
+
+    if itinerary_json is None:
+        raise HTTPException(
+            status_code=500, detail="Unable to generate itinerary")
+
+    flight_request = FlightRequest(
+        origin=itinerary_json.departure_flight_airport_code,
+        destination=itinerary_json.arrival_flight_airport_code,
+        outbound_date=itinerary_json.departure_date,
+        return_date=itinerary_json.arrival_date
+    )
+
+    hotel_request = HotelRequest(
+        location=itinerary_json.arrival_location,
+        check_in_date=itinerary_json.departure_date,
+        check_out_date=itinerary_json.arrival_date
+    )
+
+    flight_task = asyncio.create_task(get_flight_recommendations(
+        flight_request, serp_service, crew_service))
+    hotel_task = asyncio.create_task(get_hotel_recommendations(
+        hotel_request, serp_service, crew_service))
+
+    # Wait for both tasks to complete
+    flight_results, hotel_results = await asyncio.gather(flight_task, hotel_task, return_exceptions=True)
+ # Format data for itinerary generation
+    flights_text = format_travel_data("flights", flight_results.flights)
+    hotels_text = format_travel_data("hotels", hotel_results.hotels)
+    itinerary = await crew_service.generate_itinerary(
+        destination=flight_request.destination,
+        flights_text=flights_text,
+        hotels_text=hotels_text,
+        check_in_date=flight_request.outbound_date,
+        check_out_date=flight_request.return_date
+    )
+    return AIResponse(
+        flights=flight_results.flights,
+        hotels=hotel_results.hotels,
+        ai_flight_recommendation=flight_results.ai_flight_recommendation,
+        ai_hotel_recommendation=hotel_results.ai_hotel_recommendation,
+        itinerary=itinerary
+    )
+
 
 if __name__ == "__main__":
     logger.info("Starting Travel Planning API server")

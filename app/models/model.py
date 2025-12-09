@@ -84,3 +84,12 @@ class AIResponse(BaseModel):
     ai_flight_recommendation: str = ""
     ai_hotel_recommendation: str = ""
     itinerary: str = ""
+
+
+class ItineraryResponse(BaseModel):
+    departure_location: str
+    departure_date: str
+    arrival_location: str
+    arrival_date: str
+    departure_flight_airport_code: str
+    arrival_flight_airport_code: str

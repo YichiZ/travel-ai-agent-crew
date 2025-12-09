@@ -2,8 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 from crewai import Agent, Task, Crew, Process
-from app.models.model import WorkflowType, CreateTaskOptions
-
+from app.models.model import WorkflowType, CreateTaskOptions, ItineraryResponse
 from crewai_tools import RagTool
 
 logger = logging.getLogger(__name__)
@@ -64,6 +63,62 @@ class CrewAIService:
         except Exception as e:
             logger.exception(f"Error generating itinerary: {str(e)}")
             return "Unable to generate itinerary due to an error. Please try again later."
+
+    def create_itinerary_task(self, conversation: str) -> Task:
+        """Create a task to parse the itinerary from the conversation."""
+        llm_model = "gemini/gemini-2.5-flash"
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        return Task(
+            description=f"""
+            We want to create an itinerary based on the conversation.
+            The conversation is: {conversation}
+            Today's date is {today}.
+
+            The output JSON schema is:
+            {ItineraryResponse.model_json_schema()}
+
+            If the conversation does not provide enough information do the following:
+            1. The default departure location is San Francisco.
+            1. Pick a common destination from the conversation.
+            2. Pick a departure date in 1 month from today's date.
+            3. Pick a return date a week after the departure date.
+
+            The output should be a JSON object with the following fields:
+            - departure_location: The departure location.
+            - departure_date: The departure date.
+            - arrival_location: The arrival location.
+            - arrival_date: The arrival date.
+            - departure_flight_airport_code: The departure flight airport code closest to the departure location.
+            - arrival_flight_airport_code: The arrival flight airport code closest to the arrival location.
+
+            The output should be a valid JSON object.
+            """,
+            agent=self.travel_agent,
+            expected_output="A structured itinerary response based on the conversation.",
+            output_pydantic=ItineraryResponse
+        )
+
+    async def run_itinerary_task(self, task: Task) -> ItineraryResponse | None:
+        """Run the itinerary task and return the result."""
+
+        agent = self.__get_agent(WorkflowType.TRAVEL)
+
+        crew = Crew(
+            agents=[agent],
+            tasks=[task],
+            process=Process.sequential,
+            verbose=False,
+        )
+        crew_results = await asyncio.to_thread(crew.kickoff)
+        try:
+            itinerary_response = ItineraryResponse.model_validate(
+                crew_results.pydantic)
+            return itinerary_response
+        except Exception as e:
+            logger.exception(f"Error parsing itinerary: {str(e)}")
+            return None
 
     # region Private helper methods
     def __get_agent(self, agent_type: WorkflowType) -> Agent:
