@@ -1,4 +1,4 @@
-from app.models.model import FlightRequest, HotelRequest, ItineraryRequest, AIResponse, WorkflowType, ItineraryResponse
+from app.models.model import FlightRequest, HotelRequest, ItineraryRequest, AIResponse, WorkflowType, ItineraryResponse, ConversationRequest
 import uvicorn
 import asyncio
 import logging
@@ -8,7 +8,7 @@ from typing import Optional, Annotated
 from app.services.serp import SerpAPIService
 from app.services.crew import CrewAIService
 from dotenv import load_dotenv
-from app.helpers.helper import format_travel_data
+from app.helpers.helper import format_flight_data, format_hotel_data
 load_dotenv()
 
 
@@ -45,7 +45,7 @@ async def get_flight_recommendations(
     """Search flights and get AI recommendation."""
     try:
         flights = await serp_service.search_flights(flight_request)
-        flights_text = format_travel_data("flights", flights)
+        flights_text = format_flight_data(flights)
         ai_recommendation = await crew_service.get_ai_recommendation(WorkflowType.FLIGHT, flights_text)
 
         return AIResponse(
@@ -71,7 +71,7 @@ async def get_hotel_recommendations(
     try:
         # Fetch hotel data
         hotels = await serp_service.search_hotels(hotel_request)
-        hotels_text = format_travel_data("hotels", hotels)
+        hotels_text = format_hotel_data(hotels)
         ai_recommendation = await crew_service.get_ai_recommendation(WorkflowType.HOTEL, hotels_text)
 
         return AIResponse(
@@ -131,8 +131,8 @@ async def get_complete_travel_search(
             ai_hotel_recommendation = hotel_results.ai_hotel_recommendation
 
         # Format data for itinerary generation
-        flights_text = format_travel_data("flights", flights)
-        hotels_text = format_travel_data("hotels", hotels)
+        flights_text = format_flight_data(flights)
+        hotels_text = format_hotel_data(hotels)
 
         # Generate itinerary if both searches were successful
         if flights and hotels:
@@ -182,13 +182,14 @@ async def get_itinerary(
 
 @app.post("/generate_itinerary_from_conversation/", response_model=AIResponse)
 async def get_itinerary_from_conversation(
-    conversation_request: str,
+    conversation_request: ConversationRequest,
     crew_service: Annotated[CrewAIService, Depends()],
     serp_service: Annotated[SerpAPIService, Depends()]
 ):
     """Generate an itinerary based on provided conversation."""
 
-    task = crew_service.create_itinerary_task(conversation_request)
+    task = crew_service.create_itinerary_task(
+        conversation_request.conversation_text)
     itinerary_json = await crew_service.run_itinerary_task(task)
 
     if itinerary_json is None:
@@ -208,6 +209,11 @@ async def get_itinerary_from_conversation(
         check_out_date=itinerary_json.arrival_date
     )
 
+    flight_recommendation = await crew_service.generate_flight_recommendation(
+        flight_request)
+    hotel_recommendation = await crew_service.generate_hotel_recommendation(
+        hotel_request)
+
     flight_task = asyncio.create_task(get_flight_recommendations(
         flight_request, serp_service, crew_service))
     hotel_task = asyncio.create_task(get_hotel_recommendations(
@@ -215,21 +221,43 @@ async def get_itinerary_from_conversation(
 
     # Wait for both tasks to complete
     flight_results, hotel_results = await asyncio.gather(flight_task, hotel_task, return_exceptions=True)
- # Format data for itinerary generation
-    flights_text = format_travel_data("flights", flight_results.flights)
-    hotels_text = format_travel_data("hotels", hotel_results.hotels)
-    itinerary = await crew_service.generate_itinerary(
-        destination=flight_request.destination,
-        flights_text=flights_text,
-        hotels_text=hotels_text,
-        check_in_date=flight_request.outbound_date,
-        check_out_date=flight_request.return_date
-    )
+
+    # Initialize empty results
+    flights = []
+    hotels = []
+    ai_flight_recommendation = "Could not retrieve flights."
+    ai_hotel_recommendation = "Could not retrieve hotels."
+    itinerary = ""
+
+    # Process flight results if successful
+    if isinstance(flight_results, AIResponse):
+        flights = flight_results.flights
+        ai_flight_recommendation = flight_results.ai_flight_recommendation
+
+    # Process hotel results if successful
+    if isinstance(hotel_results, AIResponse):
+        hotels = hotel_results.hotels
+        ai_hotel_recommendation = hotel_results.ai_hotel_recommendation
+
+    # Format data for itinerary generation
+    flights_text = format_flight_data(flights)
+    hotels_text = format_hotel_data(hotels)
+
+    # Generate itinerary if both searches were successful
+    if flights and hotels:
+        itinerary = await crew_service.generate_itinerary(
+            destination=flight_request.destination,
+            flights_text=flights_text,
+            hotels_text=hotels_text,
+            check_in_date=flight_request.outbound_date,
+            check_out_date=flight_request.return_date
+        )
+
     return AIResponse(
-        flights=flight_results.flights,
-        hotels=hotel_results.hotels,
-        ai_flight_recommendation=flight_results.ai_flight_recommendation,
-        ai_hotel_recommendation=hotel_results.ai_hotel_recommendation,
+        flights=flights,
+        hotels=hotels,
+        ai_flight_recommendation=ai_flight_recommendation,
+        ai_hotel_recommendation=ai_hotel_recommendation,
         itinerary=itinerary
     )
 

@@ -3,7 +3,7 @@ import SearchForm from './components/SearchForm';
 import FlightResults from './components/FlightResults';
 import HotelResults from './components/HotelResults';
 import Itinerary from './components/Itinerary';
-import { searchCompleteTravel } from './services/api';
+import { generate_itinerary_from_conversation } from './services/api';
 import './App.css';
 
 function App() {
@@ -11,13 +11,13 @@ function App() {
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
 
-  const handleSearch = async (flightRequest, hotelRequest) => {
+  const handleSearch = async (conversationText) => {
     setIsLoading(true);
     setError(null);
     setResults(null);
 
     try {
-      const data = await searchCompleteTravel(flightRequest, hotelRequest);
+      const data = await generate_itinerary_from_conversation(conversationText);
       setResults(data);
     } catch (err) {
       console.error('Search error:', err);

@@ -29,6 +29,8 @@ class CreateTaskOptions(BaseModel):
         default=None, description="Check-in date in YYYY-MM-DD format")
     check_out_date: Optional[str] = Field(
         default=None, description="Check-out date in YYYY-MM-DD format")
+    conversation_text: Optional[str] = Field(
+        default=None, description="Free-form conversation text describing the travel request")
 
 
 class FlightRequest(BaseModel):
@@ -39,6 +41,8 @@ class FlightRequest(BaseModel):
         default="2025-12-01", description="Outbound date in YYYY-MM-DD format")
     return_date: str = Field(default="2025-12-15",
                              description="Return date in YYYY-MM-DD format")
+    conversation_text: str = Field(
+        default="", description="Free-form conversation text describing the travel request")
 
 
 class HotelRequest(BaseModel):
@@ -48,6 +52,8 @@ class HotelRequest(BaseModel):
         default="2025-12-01", description="Check-in date in YYYY-MM-DD format")
     check_out_date: str = Field(
         default="2025-12-15", description="Check-out date in YYYY-MM-DD format")
+    conversation_text: str = Field(
+        default="", description="Free-form conversation text describing the travel request")
 
 
 class ItineraryRequest(BaseModel):
@@ -70,12 +76,20 @@ class FlightInfo(BaseModel):
     airline_logo: str
 
 
+class FlightInfoList(BaseModel):
+    flights: List[FlightInfo]
+
+
 class HotelInfo(BaseModel):
     name: str
     price: str
     rating: float
     location: str
     link: str
+
+
+class HotelInfoList(BaseModel):
+    hotels: List[HotelInfo]
 
 
 class AIResponse(BaseModel):
@@ -93,3 +107,8 @@ class ItineraryResponse(BaseModel):
     arrival_date: str
     departure_flight_airport_code: str
     arrival_flight_airport_code: str
+
+
+class ConversationRequest(BaseModel):
+    conversation_text: str = Field(
+        description="Free-form conversation text describing the travel request")

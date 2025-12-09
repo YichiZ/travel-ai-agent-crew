@@ -30,8 +30,8 @@ dependencies = [
     "google-search-results>=2.4.0",
     "python-dotenv>=1.0.0",
     "google-generativeai>=0.3.0",
-    "crewai[google-genai]>=1.6.1",
-    "crewai-tools>=1.6.1",
+    "crewai[google-genai,tools]>=1.6.1",
+    "crewai-tools[serpapi]>=1.6.1",
 ]
 
 [project.optional-dependencies]

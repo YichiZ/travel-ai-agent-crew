@@ -86,3 +86,21 @@
 .search-button:active:not(:disabled) {
   transform: translateY(0);
 }
+
+.conversation-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  resize: vertical;
+  transition: border-color 0.3s;
+}
+
+.conversation-textarea:focus {
+  outline: none;
+  border-color: #616161;
+  box-shadow: 0 0 0 3px rgba(97, 97, 97, 0.15);
+}

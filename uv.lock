@@ -679,6 +679,9 @@ wheels = [
 google-genai = [
     { name = "google-genai" },
 ]
+tools = [
+    { name = "crewai-tools" },
+]
 
 [[package]]
 name = "crewai-tools"
@@ -699,6 +702,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f4/e2/039d47c1d5266a807c9f4f8d4b927fab1ebfb60989ec6b65fcd88070a510/crewai_tools-1.6.1.tar.gz", hash = "sha256:8724400b85b0a97de09fe681b1d0bf4334e3e68bcf5ede8a056e2beed0227907", size = 805758, upload-time = "2025-11-29T01:58:29.613Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/d1/38d0bc01712cf086cd80fe778ed15ff9b57dc5cf4c0b11f1f40d88d4b50a/crewai_tools-1.6.1-py3-none-any.whl", hash = "sha256:62996840db257af9c471f9f4191b4268cb4dd7006b381670b968ac55973e08af", size = 764950, upload-time = "2025-11-29T01:58:27.441Z" },
+]
+
+[package.optional-dependencies]
+serpapi = [
+    { name = "serpapi" },
 ]
 
 [[package]]
@@ -4382,6 +4390,18 @@ wheels = [
 ]
 
 [[package]]
+name = "serpapi"
+version = "0.1.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f0/fa/3fd8809287f3977a3e752bb88610e918d49cb1038b14f4bc51e13e594197/serpapi-0.1.5.tar.gz", hash = "sha256:b9707ed54750fdd2f62dc3a17c6a3fb7fa421dc37902fd65b2263c0ac765a1a5", size = 14191, upload-time = "2023-11-01T14:00:43.602Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/6a/21deade04100d64844e494353a5d65e7971fbdfddf78eb1f248423593ad0/serpapi-0.1.5-py2.py3-none-any.whl", hash = "sha256:6467b6adec1231059f754ccaa952b229efeaa8b9cae6e71f879703ec9e5bb3d1", size = 10966, upload-time = "2023-11-01T14:00:38.885Z" },
+]
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -4624,8 +4644,8 @@ name = "travel-ai-agent-crew"
 version = "1.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "crewai", extra = ["google-genai"] },
-    { name = "crewai-tools" },
+    { name = "crewai", extra = ["google-genai", "tools"] },
+    { name = "crewai-tools", extra = ["serpapi"] },
     { name = "fastapi", extra = ["standard"] },
     { name = "google-generativeai" },
     { name = "google-search-results" },
@@ -4645,8 +4665,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
-    { name = "crewai", extras = ["google-genai"], specifier = ">=1.6.1" },
-    { name = "crewai-tools", specifier = ">=1.6.1" },
+    { name = "crewai", extras = ["google-genai", "tools"], specifier = ">=1.6.1" },
+    { name = "crewai-tools", extras = ["serpapi"], specifier = ">=1.6.1" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.100.0" },
     { name = "google-generativeai", specifier = ">=0.3.0" },
     { name = "google-search-results", specifier = ">=2.4.0" },

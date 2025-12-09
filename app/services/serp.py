@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from fastapi import HTTPException
-from serpapi import GoogleSearch
 from typing import Dict, List, Any, Union
 from app.models.model import FlightRequest, FlightInfo, HotelRequest, HotelInfo
 import os

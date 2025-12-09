@@ -2,8 +2,11 @@ import asyncio
 import logging
 from datetime import datetime
 from crewai import Agent, Task, Crew, Process
-from app.models.model import WorkflowType, CreateTaskOptions, ItineraryResponse
-from crewai_tools import RagTool
+from app.models.model import WorkflowType, CreateTaskOptions, ItineraryResponse, FlightRequest, FlightInfo, FlightInfoList, HotelInfo, HotelInfoList, HotelRequest
+from crewai_tools import RagTool, SerpApiGoogleSearchTool
+import os
+
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -16,16 +19,150 @@ class CrewAIService:
         self.hotel_agent = self.__create_agent(WorkflowType.HOTEL)
         self.flight_agent = self.__create_agent(WorkflowType.FLIGHT)
 
-    async def get_ai_recommendation(self, data_type: WorkflowType, formatted_data: str) -> str:
+        self.api_key = os.getenv("SERP_API_KEY")
+
+    async def generate_flight_recommendation(self, flight_request: FlightRequest) -> FlightInfoList:
+        """Generate a flight recommendation based on the flight request."""
+        llm_model = "gemini/gemini-2.5-flash"
+
+        search_query_object = {
+            "engine": "google_flights",
+            "hl": "en",
+            "gl": "us",
+            "departure_id": flight_request.origin.strip().upper(),
+            "arrival_id": flight_request.destination.strip().upper(),
+            "outbound_date": flight_request.outbound_date,
+            "return_date": flight_request.return_date,
+            "currency": "USD"
+        }
+
+        flight_search_tool = SerpApiGoogleSearchTool(
+            search_query=str(search_query_object))
+
+        agent = Agent(
+            role="AI Flight Recommendation Agent. Tools: Use the serp api to get flight options. Input: Hotel request.",
+            goal=("Analyze flight options and recommend the best one considering price, "
+                  "duration, stops, and overall convenience."),
+            backstory=("AI expert that provides in-depth analysis comparing flight options "
+                       "based on multiple factors."),
+            llm=llm_model,
+            verbose=False,
+            tools=[flight_search_tool]
+        )
+
+        task = Task(
+            description=f"""
+            We want to generate a flight recommendation based on the flight request.
+            The flight request is: {flight_request.model_dump_json()}
+
+            You can use the flight_search_tool to get flight options.
+
+            Output should be a FlightInfoList object.
+            {FlightInfoList.model_json_schema()}
+
+            flights: a list of FlightInfo objects.
+
+            FlightInfo object should have the following fields:
+            - airline: The airline name.
+            - price: The price of the flight.
+            - duration: The duration of the flight.
+            - stops: The number of stops on the flight.
+            - departure: The departure airport.
+            - arrival: The arrival airport.
+            - travel_class: The travel class of the flight.
+            - return_date: The return date of the flight.
+            - airline_logo: The logo of the airline.
+
+            """,
+            agent=agent,
+            expected_output="A structured itinerary response based on the conversation.",
+            output_pydantic=FlightInfoList
+        )
+
+        crew = Crew(
+            agents=[agent],
+            tasks=[task],
+            process=Process.sequential,
+            verbose=False,
+        )
+        crew_results = await asyncio.to_thread(crew.kickoff)
+        return crew_results.pydantic
+
+    async def generate_hotel_recommendation(self, hotel_request: HotelRequest) -> HotelInfoList:
+        """Generate a hotel recommendation based on the hotel request."""
+        llm_model = "gemini/gemini-2.5-flash"
+
+        search_query_object = {
+            "engine": "google_hotels",
+            "q": hotel_request.location,
+            "hl": "en",
+            "gl": "us",
+            "check_in_date": hotel_request.check_in_date,
+            "check_out_date": hotel_request.check_out_date,
+            "currency": "USD",
+            "sort_by": 3,
+            "rating": 8
+        }
+
+        hotel_search_tool = SerpApiGoogleSearchTool(
+            search_query=str(search_query_object)
+        )
+
+        agent = Agent(
+            role="AI Hotel Recommendation Agent. Tools: Use the serp api to get hotel options. Input: Hotel request.",
+            goal=("Analyze hotel options and recommend the best one considering price, "
+                  "rating, location, and amenities."),
+            backstory=("AI expert that provides in-depth analysis comparing hotel options "
+                       "based on multiple factors."),
+            llm=llm_model,
+            verbose=False,
+            tools=[hotel_search_tool]
+        )
+
+        task = Task(
+            description=f"""
+            We want to generate a hotel recommendation based on the hotel request.
+            The hotel request is: {hotel_request.model_dump_json()}
+
+            You can use the hotel_search_tool to get hotel options.
+
+            The output should be a JSON object with the following fields:
+            hotels: a list of HotelInfo objects.
+
+            HotelInfo object should have the following fields:
+            - name: The name of the hotel.
+            - price: The price of the hotel.
+            - rating: The rating of the hotel.
+            - location: The location of the hotel.
+            - link: The link to the hotel.
+
+            The output should be a valid JSON object.
+            """,
+            agent=agent,
+            expected_output="A structured hotel recommendation response based on the hotel request.",
+            output_pydantic=HotelInfoList
+        )
+
+        crew = Crew(
+            agents=[agent],
+            tasks=[task],
+            process=Process.sequential,
+            verbose=False,
+        )
+        crew_results = await asyncio.to_thread(crew.kickoff)
+        return crew_results.pydantic
+
+    async def get_ai_recommendation(self, data_type: WorkflowType, formatted_data: str, conversation_text: str) -> str:
         """Unified function for getting AI recommendations for both flights and hotels."""
         logger.info(f"Getting {data_type} analysis from AI")
 
         options = CreateTaskOptions(
             task_type=WorkflowType(data_type),
-            formatted_data=formatted_data
+            formatted_data=formatted_data,
+            conversation_text=conversation_text
         )
 
-        analyst_crew = self.__create_crew(WorkflowType(data_type), options)
+        analyst_crew = self.__create_crew(data_type, options)
         try:
             # Run the CrewAI analysis in a thread pool
             crew_results = await asyncio.to_thread(analyst_crew.kickoff)
@@ -286,5 +423,6 @@ class CrewAIService:
             agents=list(agents),
             tasks=[task],
             process=Process.sequential,
-            verbose=False
+            verbose=False,
+            memory=True
         )

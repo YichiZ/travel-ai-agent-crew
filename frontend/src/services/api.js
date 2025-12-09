@@ -22,4 +22,16 @@ export const searchCompleteTravel = async (flightRequest, hotelRequest = null) =
   }
 };
 
+export const generate_itinerary_from_conversation = async (conversation_text) => {
+  try {
+    const response = await api.post('/generate_itinerary_from_conversation/', {
+      conversation_text: conversation_text,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error generating itinerary from conversation:', error);
+    throw error;
+  }
+};
+
 export default api;
