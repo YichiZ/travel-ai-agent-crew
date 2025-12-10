@@ -1,12 +1,8 @@
-import asyncio
 import logging
-from datetime import datetime
-from crewai import Agent, Task, Crew, Process
-from app.models.model import WorkflowType, CreateTaskOptions, ItineraryResponse, FlightRequest, FlightInfo, FlightInfoList, HotelInfo, HotelInfoList, HotelRequest
+from crewai import Agent, Task
+from app.models.model import WorkflowType, FlightRequest, FlightInfoList, HotelInfoList, HotelRequest
 from crewai_tools import RagTool, SerpApiGoogleSearchTool
 import os
-
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -15,16 +11,11 @@ class CrewAIService:
     """Service for handling AI recommendations and itinerary generation using CrewAI."""
 
     def __init__(self):
-        self.travel_agent = self.__create_agent(WorkflowType.TRAVEL)
-        self.hotel_agent = self.__create_agent(WorkflowType.HOTEL)
-        self.flight_agent = self.__create_agent(WorkflowType.FLIGHT)
-
+        self.llm_model = "gemini/gemini-2.5-flash"
         self.api_key = os.getenv("SERP_API_KEY")
 
-    async def generate_flight_recommendation(self, flight_request: FlightRequest) -> FlightInfoList:
+    async def create_flight_entities(self, flight_request: FlightRequest) -> tuple[Task, Agent]:
         """Generate a flight recommendation based on the flight request."""
-        llm_model = "gemini/gemini-2.5-flash"
-
         search_query_object = {
             "engine": "google_flights",
             "hl": "en",
@@ -40,19 +31,19 @@ class CrewAIService:
             search_query=str(search_query_object))
 
         agent = Agent(
-            role="AI Flight Recommendation Agent. Tools: Use the serp api to get flight options. Input: Hotel request.",
+            role="AI Flight Analyst",
             goal=("Analyze flight options and recommend the best one considering price, "
                   "duration, stops, and overall convenience."),
             backstory=("AI expert that provides in-depth analysis comparing flight options "
                        "based on multiple factors."),
-            llm=llm_model,
+            llm=self.llm_model,
             verbose=False,
-            tools=[flight_search_tool]
+            tools=[flight_search_tool],
         )
 
         task = Task(
             description=f"""
-            We want to generate a flight recommendation based on the flight request.
+            We want to generate a flight recommendation based on the flight request. Limit the search to 5 results.
             The flight request is: {flight_request.model_dump_json()}
 
             You can use the flight_search_tool to get flight options.
@@ -76,22 +67,13 @@ class CrewAIService:
             """,
             agent=agent,
             expected_output="A structured itinerary response based on the conversation.",
-            output_pydantic=FlightInfoList
+            output_pydantic=FlightInfoList,
+            async_execution=True
         )
+        return task, agent
 
-        crew = Crew(
-            agents=[agent],
-            tasks=[task],
-            process=Process.sequential,
-            verbose=False,
-        )
-        crew_results = await asyncio.to_thread(crew.kickoff)
-        return crew_results.pydantic
-
-    async def generate_hotel_recommendation(self, hotel_request: HotelRequest) -> HotelInfoList:
+    async def create_hotel_entities(self, hotel_request: HotelRequest) -> tuple[Task, Agent]:
         """Generate a hotel recommendation based on the hotel request."""
-        llm_model = "gemini/gemini-2.5-flash"
-
         search_query_object = {
             "engine": "google_hotels",
             "q": hotel_request.location,
@@ -109,19 +91,19 @@ class CrewAIService:
         )
 
         agent = Agent(
-            role="AI Hotel Recommendation Agent. Tools: Use the serp api to get hotel options. Input: Hotel request.",
+            role="AI Hotel Analyst",
             goal=("Analyze hotel options and recommend the best one considering price, "
                   "rating, location, and amenities."),
             backstory=("AI expert that provides in-depth analysis comparing hotel options "
                        "based on multiple factors."),
-            llm=llm_model,
+            llm=self.llm_model,
             verbose=False,
-            tools=[hotel_search_tool]
+            tools=[hotel_search_tool],
         )
 
         task = Task(
             description=f"""
-            We want to generate a hotel recommendation based on the hotel request.
+            We want to generate a hotel recommendation based on the hotel request. Limit the search to 8 results.
             The hotel request is: {hotel_request.model_dump_json()}
 
             You can use the hotel_search_tool to get hotel options.
@@ -135,182 +117,69 @@ class CrewAIService:
             - rating: The rating of the hotel.
             - location: The location of the hotel.
             - link: The link to the hotel.
+            - check_in_date: The check-in date of the hotel.
+            - check_out_date: The check-out date of the hotel.
 
             The output should be a valid JSON object.
             """,
             agent=agent,
             expected_output="A structured hotel recommendation response based on the hotel request.",
-            output_pydantic=HotelInfoList
+            output_pydantic=HotelInfoList,
+            async_execution=True
         )
 
-        crew = Crew(
-            agents=[agent],
-            tasks=[task],
-            process=Process.sequential,
+        return task, agent
+
+    async def generate_itinerary(self, flight_task: Task, hotel_task: Task) -> tuple[Task, Agent]:
+        """Generate an itinerary based on the conversation text."""
+        travel_tips_tool = RagTool()
+
+        travel_tips_tool.add(
+            data_type="website", url="https://www.nomadicmatt.com/travel-blogs/61-travel-tips/"
+        )
+
+        agent = Agent(
+            role="AI Travel Planner",
+            goal="Create a detailed itinerary for the user based on flight and hotel information and travel tips. Use the travel tips to help create a detailed itinerary.",
+            backstory=("AI travel expert generating a day-by-day itinerary including flight "
+                       "details, hotel stays, and must-visit locations in the destination."),
+            llm=self.llm_model,
             verbose=False,
-        )
-        crew_results = await asyncio.to_thread(crew.kickoff)
-        return crew_results.pydantic
-
-    async def get_ai_recommendation(self, data_type: WorkflowType, formatted_data: str, conversation_text: str) -> str:
-        """Unified function for getting AI recommendations for both flights and hotels."""
-        logger.info(f"Getting {data_type} analysis from AI")
-
-        options = CreateTaskOptions(
-            task_type=WorkflowType(data_type),
-            formatted_data=formatted_data,
-            conversation_text=conversation_text
+            tools=[travel_tips_tool],
         )
 
-        analyst_crew = self.__create_crew(data_type, options)
-        try:
-            # Run the CrewAI analysis in a thread pool
-            crew_results = await asyncio.to_thread(analyst_crew.kickoff)
-
-            # Handle different possible return types from CrewAI
-            if hasattr(crew_results, 'raw'):
-                return crew_results.raw
-            else:
-                return str(crew_results)
-        except Exception as e:
-            logger.exception(f"Error in AI {data_type} analysis: {str(e)}")
-            return f"Unable to generate {data_type} recommendation due to an error."
-
-    async def generate_itinerary(self, destination: str, flights_text: str, hotels_text: str, check_in_date: str, check_out_date: str) -> str:
-        """Generate a detailed travel itinerary based on flight and hotel information."""
-        try:
-            options = CreateTaskOptions(
-                task_type=WorkflowType.TRAVEL,
-                destination=destination,
-                flights_text=flights_text,
-                hotels_text=hotels_text,
-                check_in_date=check_in_date,
-                check_out_date=check_out_date
-            )
-
-            crew = self.__create_crew(WorkflowType.TRAVEL, options)
-
-            crew_results = await asyncio.to_thread(crew.kickoff)
-
-            # Handle different possible return types from CrewAI
-            if hasattr(crew_results, 'raw'):
-                return crew_results.raw
-            else:
-                return str(crew_results)
-        except Exception as e:
-            logger.exception(f"Error generating itinerary: {str(e)}")
-            return "Unable to generate itinerary due to an error. Please try again later."
-
-    def create_itinerary_task(self, conversation: str) -> Task:
-        """Create a task to parse the itinerary from the conversation."""
-        llm_model = "gemini/gemini-2.5-flash"
-
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        return Task(
+        task = Task(
             description=f"""
-            We want to create an itinerary based on the conversation.
-            The conversation is: {conversation}
-            Today's date is {today}.
+            We want to generate an itinerary based on the flight and hotel information.
 
-            The output JSON schema is:
-            {ItineraryResponse.model_json_schema()}
+            The itinerary should include:
+            - Summary of the dates, flights and hotels.
+            - Flight arrival and departure information
+            - Hotel check-in and check-out details
+            - Day-by-day breakdown of activities
+            - Must-visit attractions and estimated visit times
+            - Restaurant recommendations for meals
+            - Tips for local transportation
 
-            If the conversation does not provide enough information do the following:
-            1. The default departure location is San Francisco.
-            1. Pick a common destination from the conversation.
-            2. Pick a departure date in 1 month from today's date.
-            3. Pick a return date a week after the departure date.
-
-            The output should be a JSON object with the following fields:
-            - departure_location: The departure location.
-            - departure_date: The departure date.
-            - arrival_location: The arrival location.
-            - arrival_date: The arrival date.
-            - departure_flight_airport_code: The departure flight airport code closest to the departure location.
-            - arrival_flight_airport_code: The arrival flight airport code closest to the arrival location.
-
-            The output should be a valid JSON object.
+            📝 **Format Requirements**:
+            - Use markdown formatting with clear headings (# for main headings, ## for days, ### for sections)
+            - Include emojis for different types of activities (🏛️ for landmarks, 🍽️ for restaurants, etc.)
+            - Use bullet points for listing activities
+            - Include estimated timings for each activity
+            - Format the itinerary to be visually appealing and easy to read
             """,
-            agent=self.travel_agent,
-            expected_output="A structured itinerary response based on the conversation.",
-            output_pydantic=ItineraryResponse
+            agent=agent,
+            context=[flight_task, hotel_task],
+            expected_output="A detailed itinerary of the city based on the flight and hotel information.",
         )
 
-    async def run_itinerary_task(self, task: Task) -> ItineraryResponse | None:
-        """Run the itinerary task and return the result."""
+        return task, agent
 
-        agent = self.__get_agent(WorkflowType.TRAVEL)
-
-        crew = Crew(
-            agents=[agent],
-            tasks=[task],
-            process=Process.sequential,
-            verbose=False,
-        )
-        crew_results = await asyncio.to_thread(crew.kickoff)
-        try:
-            itinerary_response = ItineraryResponse.model_validate(
-                crew_results.pydantic)
-            return itinerary_response
-        except Exception as e:
-            logger.exception(f"Error parsing itinerary: {str(e)}")
-            return None
-
-    # region Private helper methods
-    def __get_agent(self, agent_type: WorkflowType) -> Agent:
-        """Retrieve the appropriate agent based on the workflow type."""
-        match agent_type:
+    def get_recommendation_prompt(self, workflow_type: WorkflowType) -> str | None:
+        """Create a task description based on the workflow type."""
+        match workflow_type:
             case WorkflowType.FLIGHT:
-                return self.flight_agent
-            case WorkflowType.HOTEL:
-                return self.hotel_agent
-            case WorkflowType.TRAVEL:
-                return self.travel_agent
-
-    def __create_agent(self, agent_type: WorkflowType) -> Agent:
-        """Create an agent for the given workflow type."""
-        # Default LLM model for the service
-        llm_model = "gemini/gemini-2.5-flash"
-
-        match agent_type:
-            case WorkflowType.FLIGHT:
-                return Agent(
-                    role="AI Flight Analyst",
-                    goal=("Analyze flight options and recommend the best one considering price, "
-                          "duration, stops, and overall convenience."),
-                    backstory=("AI expert that provides in-depth analysis comparing flight options "
-                               "based on multiple factors."),
-                    llm=llm_model,
-                    verbose=False,
-                )
-            case WorkflowType.HOTEL:
-                return Agent(
-                    role="AI Hotel Analyst",
-                    goal=("Analyze hotel options and recommend the best one considering price, "
-                          "rating, location, and amenities."),
-                    backstory=("AI expert that provides in-depth analysis comparing hotel options "
-                               "based on multiple factors."),
-                    llm=llm_model,
-                    verbose=False,
-                )
-            case WorkflowType.TRAVEL:
-                return Agent(
-                    role="AI Travel Planner",
-                    goal="Create a detailed itinerary for the user based on flight and hotel information",
-                    backstory=("AI travel expert generating a day-by-day itinerary including flight "
-                               "details, hotel stays, and must-visit locations in the destination."),
-                    llm=llm_model,
-                    verbose=False,
-                )
-
-    def __create_task(self, agent, options: CreateTaskOptions) -> Task:
-        """Create a task based on the provided options."""
-        description = ""
-
-        match options.task_type:
-            case WorkflowType.FLIGHT:
-                description = """
+                return """
                 Recommend the best flight from the available options, based on the details provided below:
 
                 **Reasoning for Recommendation:**
@@ -322,7 +191,7 @@ class CrewAIService:
                 Use the provided flight data as the basis for your recommendation. Be sure to justify your choice using clear reasoning for each attribute. Do not repeat the flight details in your response.
                 """
             case WorkflowType.HOTEL:
-                description = """
+                return """
                     Based on the following analysis, generate a detailed recommendation for the best hotel. Your response should include clear reasoning based on price, rating, location, and amenities.
 
                     **🏆 AI Hotel Recommendation**
@@ -340,89 +209,5 @@ class CrewAIService:
                     - Provide concise, well-structured reasoning to make the recommendation clear to the traveler.
                     - Your recommendation should help a traveler make an informed decision based on multiple factors, not just one.
                     """
-            case WorkflowType.TRAVEL:
-                if not options.destination or not options.flights_text or not options.check_in_date or not options.check_out_date:
-                    raise ValueError(
-                        "Destination, flight information, check_in_date or check_out_date must be provided for travel itinerary tasks.")
-
-                # Convert the string dates to datetime objects
-                check_in = datetime.strptime(options.check_in_date, "%Y-%m-%d")
-                check_out = datetime.strptime(
-                    options.check_out_date, "%Y-%m-%d")
-
-                # Calculate the difference in days
-                days = (check_out - check_in).days
-
-                description = f"""
-                    Based on the following details, create a {days}-day itinerary for the user:
-
-                    **Flight Details**:
-                    {options.flights_text}
-
-                    **Hotel Details**:
-                    {options.hotels_text}
-
-                    **Destination**: {options.destination}
-
-                    **Travel Dates**: {options.check_in_date} to {options.check_out_date} ({days} days)
-
-                    The itinerary should include:
-                    - Flight arrival and departure information
-                    - Hotel check-in and check-out details
-                    - Day-by-day breakdown of activities
-                    - Must-visit attractions and estimated visit times
-                    - Restaurant recommendations for meals
-                    - Tips for local transportation
-
-                    📝 **Format Requirements**:
-                    - Use markdown formatting with clear headings (# for main headings, ## for days, ### for sections)
-                    - Include emojis for different types of activities (🏛️ for landmarks, 🍽️ for restaurants, etc.)
-                    - Use bullet points for listing activities
-                    - Include estimated timings for each activity
-                    - Format the itinerary to be visually appealing and easy to read
-                    """
-
-        return Task(
-            description=f"{description}\n\nData to analyze:\n{options.formatted_data}",
-            agent=agent,
-            expected_output=f"A structured recommendation explaining the best {options.task_type.value} choice based on the analysis of provided details."
-        )
-
-    def __get_blogger_agent(self) -> Agent:
-        """Get the travel tips tool."""
-        llm_model = "gemini/gemini-2.5-flash"
-
-        rag_tool = RagTool(
-        )
-
-        rag_tool.add(
-            data_type="website", url="https://www.nomadicmatt.com/travel-blogs/61-travel-tips/"
-        )
-
-        return Agent(
-            role="Travel Blogger",
-            goal="Create a travel blog post based on the itinerary provided",
-            backstory="A travel blogger who creates engaging and informative blog posts about the destinations and experiences.",
-            llm=llm_model,
-            verbose=False,
-            tools=[rag_tool],
-        )
-
-    def __create_crew(self, workflow_type: WorkflowType, options: CreateTaskOptions) -> Crew:
-        """Create a crew for the given workflow type."""
-        agent = self.__get_agent(workflow_type)
-        task = self.__create_task(agent, options)
-
-        agents = [agent]
-
-        if workflow_type == WorkflowType.TRAVEL:
-            agents.append(self.__get_blogger_agent())
-
-        return Crew(
-            # Ensure correct type for Crew constructor (list[BaseAgent])
-            agents=list(agents),
-            tasks=[task],
-            process=Process.sequential,
-            verbose=False,
-            memory=True
-        )
+            case _:
+                raise ValueError(f"Unsupported workflow type: {workflow_type}")

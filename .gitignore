@@ -1,85 +1,48 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
-*.py[cod]
-*$py.class
 
-# C extensions
 *.so
+*.egg-info/
+*.egg
+.venv/
 
 # Distribution / packaging
-.Python
 build/
 dist/
-downloads/
-eggs/
-.eggs/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
-pip-wheel-metadata/
-share/python-wheels/
+.Python
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage
+# Testing / Coverage
+.pytest_cache/
+.coverage
+.coverage.*
 htmlcov/
 .tox/
 .nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
 .hypothesis/
-.pytest_cache/
-
-# Pyenv
-.python-version
-
-# Environments
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-.venv/
 
 # IDEs
-.idea/
 .vscode/
-*.sublime-project
-*.sublime-workspace
+.claude/
+.cursor/
+
+# Environment variables
+.env
+.env.*
 
 # macOS
 .DS_Store
 
-# dotenv
-.env
-.env.*
+# Frontend (Node.js / Vite)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+*.log
 
-# Jupyter
-.ipynb_checkpoints
-
-# mypy
+# Type checking
 .mypy_cache/
 
-# celery beat
-celerybeat-schedule
-
-# virtualenv
-instance/
-
-# local settings
-local_settings.py
-
-# PyCharm
-*.iml
-
-# End of .gitignore
+# Project specific
+travel_ai_agent_crew.egg-info/
+crewai_memory/
+TODO.md

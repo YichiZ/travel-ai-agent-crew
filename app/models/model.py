@@ -86,6 +86,8 @@ class HotelInfo(BaseModel):
     rating: float
     location: str
     link: str
+    check_in_date: str
+    check_out_date: str
 
 
 class HotelInfoList(BaseModel):
