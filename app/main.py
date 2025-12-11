@@ -1,4 +1,4 @@
-from app.models.model import FlightRequest, HotelRequest, AIResponse, ConversationRequest
+from app.models.model import FlightRequest, HotelRequest, AIResponse, ConversationRequest, ChatRequest, KeepChatRequest
 import uvicorn
 import asyncio
 import logging
@@ -7,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
 from app.services.llm import LLMService
 from app.services.crew import CrewAIService
+from app.services.serp import SerpAPIService
 from dotenv import load_dotenv
 from crewai import Crew, Process
+from app.services.chat import ChatService
 load_dotenv()
 
 
@@ -34,6 +36,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.post("/search_flights/")
+async def search_flights(
+    flight_request: FlightRequest,
+    serp_service: Annotated[SerpAPIService, Depends()]
+):
+    """Search for flights using SerpAPI."""
+    return await serp_service.search_flights(flight_request)
+
+
+@app.post("/search_hotels/")
+async def search_hotels(
+    hotel_request: HotelRequest,
+    serp_service: Annotated[SerpAPIService, Depends()]
+):
+    """Search for hotels using SerpAPI."""
+    return await serp_service.search_hotels(hotel_request)
 
 
 @app.post("/generate_itinerary_from_conversation/", response_model=AIResponse)
@@ -69,11 +89,14 @@ async def get_itinerary_from_conversation(
     (hotel_task, hotel_agent) = await crew_service.create_hotel_entities(
         hotel_request)
 
-    (itinerary_task, itinerary_agent) = await crew_service.generate_itinerary(flight_task, hotel_task)
+    (recommendation_task, recommendation_agent) = await crew_service.create_recommendation_entities(flight_task, hotel_task)
+
+    (itinerary_task, itinerary_agent) = await crew_service.generate_itinerary(flight_task, hotel_task, recommendation_task)
 
     crew = Crew(
-        agents=[flight_agent, hotel_agent, itinerary_agent],
-        tasks=[flight_task, hotel_task, itinerary_task],
+        agents=[flight_agent, hotel_agent,
+                recommendation_agent, itinerary_agent],
+        tasks=[flight_task, hotel_task, recommendation_task, itinerary_task],
         process=Process.sequential,
         verbose=True,
     )
@@ -88,6 +111,24 @@ async def get_itinerary_from_conversation(
         ai_hotel_recommendation="",
         itinerary=itinerary
     )
+
+
+@app.post("/start_chat/")
+async def start_chat(
+    chat_request: ChatRequest,
+    chat_service: Annotated[ChatService, Depends()]
+):
+    """Start a new chat."""
+    return chat_service.start_chat(chat_request)
+
+
+@app.post("/keep_chat/")
+async def keep_chat(
+    keep_chat_request: KeepChatRequest,
+    chat_service: Annotated[ChatService, Depends()]
+):
+    """Keep chatting with the chat assistant using the chat ID."""
+    return chat_service.keep_chat(keep_chat_request)
 
 
 if __name__ == "__main__":

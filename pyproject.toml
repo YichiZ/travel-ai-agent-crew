@@ -32,6 +32,7 @@ dependencies = [
     "google-generativeai>=0.3.0",
     "crewai[google-genai,tools]>=1.6.1",
     "crewai-tools[serpapi]>=1.6.1",
+    "langchain-google-genai>=4.0.0",
 ]
 
 [project.optional-dependencies]

@@ -1,4 +1,3 @@
-
 from app.models.model import ItineraryResponse
 from datetime import datetime
 from crewai import LLM
@@ -21,9 +20,9 @@ class LLMService:
 
             If the conversation does not provide enough information do the following:
             1. The default departure location is San Francisco.
-            1. Pick a common destination from the conversation.
-            2. Pick a departure date in 1 month from today's date.
-            3. If not mentioned, pick a return date 1 week after the departure date.
+            2. Pick a common destination from the conversation.
+            3. Pick a departure date in 1 month from today's date.
+            4. If not mentioned, pick a return date 1 week after the departure date.
 
             The output should be a JSON object with the following fields:
             - departure_location: The departure location.

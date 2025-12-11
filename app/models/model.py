@@ -4,8 +4,9 @@ Contains all Pydantic models for requests and responses.
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Union
 from enum import Enum
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 
 class WorkflowType(Enum):
@@ -94,6 +95,11 @@ class HotelInfoList(BaseModel):
     hotels: List[HotelInfo]
 
 
+class RecommendationInfo(BaseModel):
+    selected_flight: FlightInfo
+    selected_hotel: HotelInfo
+
+
 class AIResponse(BaseModel):
     flights: List[FlightInfo] = []
     hotels: List[HotelInfo] = []
@@ -114,3 +120,25 @@ class ItineraryResponse(BaseModel):
 class ConversationRequest(BaseModel):
     conversation_text: str = Field(
         description="Free-form conversation text describing the travel request")
+
+
+class ChatRequest(BaseModel):
+    itinerary: str = Field(
+        description="Detailed itinerary for the travel request")
+    human_message: str = Field(
+        description="Human message to send to the chat assistant")
+
+
+class KeepChatRequest(BaseModel):
+    chat_id: str = Field(
+        description="Chat ID to keep the chat")
+    human_message: str = Field(
+        description="Human message to send to the chat assistant")
+
+
+class ChatsHistory(BaseModel):
+    """Model representing chat history with UUID as chat_id and list of LangChain messages."""
+    chats_history: dict[str, List[Union[SystemMessage, HumanMessage, AIMessage]]] = Field(
+        default_factory=dict,
+        description="Dictionary mapping chat_id (UUID) to list of SystemMessage, HumanMessage, or AIMessage"
+    )

@@ -1,6 +1,6 @@
 import logging
 from crewai import Agent, Task
-from app.models.model import WorkflowType, FlightRequest, FlightInfoList, HotelInfoList, HotelRequest
+from app.models.model import FlightRequest, FlightInfoList, HotelInfoList, HotelRequest, RecommendationInfo
 from crewai_tools import RagTool, SerpApiGoogleSearchTool
 import os
 
@@ -68,7 +68,8 @@ class CrewAIService:
             agent=agent,
             expected_output="A structured itinerary response based on the conversation.",
             output_pydantic=FlightInfoList,
-            async_execution=True
+            async_execution=True,
+            guardrail_max_retries=3,
         )
         return task, agent
 
@@ -125,14 +126,69 @@ class CrewAIService:
             agent=agent,
             expected_output="A structured hotel recommendation response based on the hotel request.",
             output_pydantic=HotelInfoList,
-            async_execution=True
+            async_execution=True,
+            guardrail_max_retries=3,
         )
 
         return task, agent
 
-    async def generate_itinerary(self, flight_task: Task, hotel_task: Task) -> tuple[Task, Agent]:
+    async def create_recommendation_entities(self, flight_task: Task, hotel_task: Task) -> tuple[Task, Agent]:
+        """Create recommended entities based on the flight and hotel information."""
+        agent = Agent(
+            role="AI Travel Planner ",
+            goal="Create recommended entities based on the flight and hotel information.",
+            backstory="AI expert that creates recommended entities based on the flight and hotel information.",
+            llm=self.llm_model,
+            verbose=False,
+        )
+
+        task = Task(
+            description=f"""
+            Recommend the best flight from the available options. Use the provided flight data as the basis for your recommendation. Be sure to justify your choice using clear reasoning for each attribute. Do not repeat the flight details in your response.
+
+            **Reasoning for Recommendation:**
+            - **💰 Price:** Provide a detailed explanation about why this flight offers the best value compared to others.
+            - **⏱️ Duration:** Explain why this flight has the best duration in comparison to others.
+            - **🛑 Stops:** Discuss why this flight has minimal or optimal stops.
+            - **💺 Travel Class:** Describe why this flight provides the best comfort and amenities.
+
+            Use the provided flight data as the basis for your recommendation. Be sure to justify your choice using clear reasoning for each attribute. Do not repeat the flight details in your response.
+
+            Recommend the best hotel from the available options. Use the provided hotel data as the basis for your recommendation. Be sure to justify your choice using clear reasoning for each attribute. Do not repeat the hotel details in your response.
+
+            **🏆 AI Hotel Recommendation**
+            We recommend the best hotel based on the following analysis:
+
+            **Reasoning for Recommendation**:
+            - **💰 Price:** The recommended hotel is the best option for the price compared to others, offering the best value for the amenities and services provided.
+            - **⭐ Rating:** With a higher rating compared to the alternatives, it ensures a better overall guest experience. Explain why this makes it the best choice.
+            - **📍 Location:** The hotel is in a prime location, close to important attractions, making it convenient for travelers.
+            - **🛋️ Amenities:** The hotel offers amenities like Wi-Fi, pool, fitness center, free breakfast, etc. Discuss how these amenities enhance the experience, making it suitable for different types of travelers.
+
+            📝 **Reasoning Requirements**:
+            - Ensure that each section clearly explains why this hotel is the best option based on the factors of price, rating, location, and amenities.
+            - Compare it against the other options and explain why this one stands out.
+            - Provide concise, well-structured reasoning to make the recommendation clear to the traveler.
+            - Your recommendation should help a traveler make an informed decision based on multiple factors, not just one.
+
+            The output should be a JSON object with the following fields:
+            - selected_flight: The selected flight.
+            - selected_hotel: The selected hotel.
+            """,
+            agent=agent,
+            expected_output="A structured recommended entities response based on the flight and hotel information.",
+            output_pydantic=RecommendationInfo,
+            context=[flight_task, hotel_task],
+        )
+
+        return task, agent
+
+    async def generate_itinerary(self, flight_task: Task, hotel_task: Task, recommendation_task: Task) -> tuple[Task, Agent]:
         """Generate an itinerary based on the conversation text."""
-        travel_tips_tool = RagTool()
+        travel_tips_tool = RagTool(
+            name="Travel Tips Provider",
+            description="Fetches curated travel tips from expert travel websites."
+        )
 
         travel_tips_tool.add(
             data_type="website", url="https://www.nomadicmatt.com/travel-blogs/61-travel-tips/"
@@ -150,12 +206,13 @@ class CrewAIService:
 
         task = Task(
             description=f"""
-            We want to generate an itinerary based on the flight and hotel information.
+            We want to generate an itinerary based on the best flight and hotel recommendation.
 
             The itinerary should include:
             - Summary of the dates, flights and hotels.
-            - Flight arrival and departure information
-            - Hotel check-in and check-out details
+            - Flight arrival and departure information from the best flight recommendation.
+            - Hotel check-in and check-out details from the best hotel recommendation.
+            - Reasoning for the flight and hotel recommendation.
             - Day-by-day breakdown of activities
             - Must-visit attractions and estimated visit times
             - Restaurant recommendations for meals
@@ -169,45 +226,8 @@ class CrewAIService:
             - Format the itinerary to be visually appealing and easy to read
             """,
             agent=agent,
-            context=[flight_task, hotel_task],
+            context=[flight_task, hotel_task, recommendation_task],
             expected_output="A detailed itinerary of the city based on the flight and hotel information.",
         )
 
         return task, agent
-
-    def get_recommendation_prompt(self, workflow_type: WorkflowType) -> str | None:
-        """Create a task description based on the workflow type."""
-        match workflow_type:
-            case WorkflowType.FLIGHT:
-                return """
-                Recommend the best flight from the available options, based on the details provided below:
-
-                **Reasoning for Recommendation:**
-                - **💰 Price:** Provide a detailed explanation about why this flight offers the best value compared to others.
-                - **⏱️ Duration:** Explain why this flight has the best duration in comparison to others.
-                - **🛑 Stops:** Discuss why this flight has minimal or optimal stops.
-                - **💺 Travel Class:** Describe why this flight provides the best comfort and amenities.
-
-                Use the provided flight data as the basis for your recommendation. Be sure to justify your choice using clear reasoning for each attribute. Do not repeat the flight details in your response.
-                """
-            case WorkflowType.HOTEL:
-                return """
-                    Based on the following analysis, generate a detailed recommendation for the best hotel. Your response should include clear reasoning based on price, rating, location, and amenities.
-
-                    **🏆 AI Hotel Recommendation**
-                    We recommend the best hotel based on the following analysis:
-
-                    **Reasoning for Recommendation**:
-                    - **💰 Price:** The recommended hotel is the best option for the price compared to others, offering the best value for the amenities and services provided.
-                    - **⭐ Rating:** With a higher rating compared to the alternatives, it ensures a better overall guest experience. Explain why this makes it the best choice.
-                    - **📍 Location:** The hotel is in a prime location, close to important attractions, making it convenient for travelers.
-                    - **🛋️ Amenities:** The hotel offers amenities like Wi-Fi, pool, fitness center, free breakfast, etc. Discuss how these amenities enhance the experience, making it suitable for different types of travelers.
-
-                    📝 **Reasoning Requirements**:
-                    - Ensure that each section clearly explains why this hotel is the best option based on the factors of price, rating, location, and amenities.
-                    - Compare it against the other options and explain why this one stands out.
-                    - Provide concise, well-structured reasoning to make the recommendation clear to the traveler.
-                    - Your recommendation should help a traveler make an informed decision based on multiple factors, not just one.
-                    """
-            case _:
-                raise ValueError(f"Unsupported workflow type: {workflow_type}")
