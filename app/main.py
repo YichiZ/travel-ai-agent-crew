@@ -105,10 +105,7 @@ async def get_itinerary_from_conversation(
     itinerary = crew_results.raw
 
     return AIResponse(
-        flights=[],
-        hotels=[],
-        ai_flight_recommendation="",
-        ai_hotel_recommendation="",
+        itinerary_json=itinerary_json,
         itinerary=itinerary
     )
 

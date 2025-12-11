@@ -100,14 +100,6 @@ class RecommendationInfo(BaseModel):
     selected_hotel: HotelInfo
 
 
-class AIResponse(BaseModel):
-    flights: List[FlightInfo] = []
-    hotels: List[HotelInfo] = []
-    ai_flight_recommendation: str = ""
-    ai_hotel_recommendation: str = ""
-    itinerary: str = ""
-
-
 class ItineraryResponse(BaseModel):
     departure_location: str
     departure_date: str
@@ -115,6 +107,13 @@ class ItineraryResponse(BaseModel):
     arrival_date: str
     departure_flight_airport_code: str
     arrival_flight_airport_code: str
+
+
+class AIResponse(BaseModel):
+    itinerary: str = ""
+    itinerary_json: ItineraryResponse = Field(
+        description="Structured itinerary data with location and date information"
+    )
 
 
 class ConversationRequest(BaseModel):
