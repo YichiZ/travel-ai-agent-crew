@@ -33,6 +33,10 @@ dependencies = [
     "crewai[google-genai,tools]>=1.6.1",
     "crewai-tools[serpapi]>=1.6.1",
     "langchain-google-genai>=4.0.0",
+    "redis[hiredis]>=7.1.0",
+    "kafka-python>=2.3.0",
+    "openai-agents>=0.6.4",
+    "openai>=2.14.0",
 ]
 
 [project.optional-dependencies]

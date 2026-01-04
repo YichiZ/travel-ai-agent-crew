@@ -11,6 +11,7 @@ from app.services.serp import SerpAPIService
 from dotenv import load_dotenv
 from crewai import Crew, Process
 from app.services.chat import ChatService
+from app.routers import openai
 load_dotenv()
 
 
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Travel Planning API", version="1.1.0")
+
+# Include routers
+app.include_router(openai.router)
 
 # Configure CORS
 app.add_middleware(
