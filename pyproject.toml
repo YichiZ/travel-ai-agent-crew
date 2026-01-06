@@ -36,7 +36,7 @@ dependencies = [
     "redis[hiredis]>=7.1.0",
     "kafka-python>=2.3.0",
     "openai-agents>=0.6.4",
-    "openai>=2.14.0",
+    "openai>=2.14.0"
 ]
 
 [project.optional-dependencies]
