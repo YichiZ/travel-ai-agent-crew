@@ -1,10 +1,15 @@
 import os
 import logging
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from dotenv import load_dotenv
-from agents import Agent, Runner, function_tool
 import serpapi
+
+from agents import Agent, Runner, function_tool, SQLiteSession
 from app.models.model import FlightRequest, HotelRequest
 
 
@@ -21,51 +26,55 @@ router = APIRouter(
 
 class GenerateTripRequest(BaseModel):
     """Request model for trip generation."""
+
     prompt: str
-    # Add more fields as needed for the OpenAI agent
+    sessionId: Optional[str] = None
 
 
 class GenerateTripResponse(BaseModel):
     """Response model for trip generation."""
+
     trip_data: dict
-    # Add more fields as needed
 
 
 @function_tool
 def log_planning_step(step_name: str, details: str) -> str:
-    """
-    Log important steps during the travel planning process.
+    """Log important steps during the travel planning process.
 
     Args:
         step_name: Name of the planning step (e.g., "Destination Analysis", "Budget Calculation")
         details: Details about what was done in this step
 
     Returns:
-        Confirmation message
+        Confirmation message indicating the step was logged
     """
-    import logging
-    logger = logging.getLogger(__name__)
     logger.info(f"[Travel Planning] {step_name}: {details}")
     return f"Logged: {step_name}"
 
 
 @function_tool
-async def searchFlights(flight_request: FlightRequest):
-    """
-    Search for flights based on the provided flight request.
+async def searchFlights(flight_request: FlightRequest) -> list[dict]:
+    """Search for flights based on the provided flight request.
 
     Args:
-        flight_request: FlightRequest object containing flight parameters
-        - origin: Origin airport code
-        - destination: Destination airport code
-        - outbound_date: Outbound date
-        - return_date: Return date
+        flight_request: FlightRequest object containing flight parameters:
+            - origin: Origin airport code
+            - destination: Destination airport code
+            - outbound_date: Outbound date
+            - return_date: Return date
 
     Returns:
-        A list of formatted flight options.
+        A list of formatted flight options with airline, price, duration, stops, etc.
+
+    Raises:
+        Exception: If the search fails or API key is missing
     """
+    api_key = os.getenv("SERP_API_KEY")
+    if not api_key:
+        raise ValueError("SERP_API_KEY environment variable is not set")
+
     search_params = {
-        "api_key": os.getenv("SERP_API_KEY"),
+        "api_key": api_key,
         "engine": "google_flights",
         "hl": "en",
         "gl": "us",
@@ -73,10 +82,10 @@ async def searchFlights(flight_request: FlightRequest):
         "arrival_id": flight_request.destination.strip().upper(),
         "outbound_date": flight_request.outbound_date,
         "return_date": flight_request.return_date,
-        "currency": "USD"
+        "currency": "USD",
     }
 
-    logger.info(f"Search params: {search_params}")
+    logger.info(f"Searching flights with params: {search_params}")
     search_results = serpapi.search(search_params)
 
     # Process and limit results for the agent
@@ -88,46 +97,57 @@ async def searchFlights(flight_request: FlightRequest):
     for flight in all_flights:
         if not flight.get("flights"):
             continue
+
         first_leg = flight["flights"][0]
+        num_flights = len(flight["flights"])
+        stops = "Nonstop" if num_flights == 1 else f"{num_flights - 1} stops"
+
         formatted_options.append({
             "airline": first_leg.get("airline"),
             "price": f"${flight.get('price')}",
             "duration": f"{flight.get('total_duration')} min",
-            "stops": "Nonstop" if len(flight["flights"]) == 1 else f"{len(flight['flights'])-1} stops",
+            "stops": stops,
             "departure": first_leg.get("departure_airport", {}).get("time"),
             "arrival": first_leg.get("arrival_airport", {}).get("time"),
-            "class": first_leg.get("travel_class")
+            "class": first_leg.get("travel_class"),
         })
 
+    logger.info(f"Found {len(formatted_options)} flight options")
     return formatted_options
 
 
 @function_tool
-async def searchHotels(hotel_request: HotelRequest):
-    """
-    Search for hotels based on the provided hotel request.
+async def searchHotels(hotel_request: HotelRequest) -> list[dict]:
+    """Search for hotels based on the provided hotel request.
 
     Args:
-        hotel_request: HotelRequest object containing hotel parameters
-        - location: Hotel location or city name
-        - check_in_date: Check-in date in YYYY-MM-DD format
-        - check_out_date: Check-out date in YYYY-MM-DD format
+        hotel_request: HotelRequest object containing hotel parameters:
+            - location: Hotel location or city name
+            - check_in_date: Check-in date in YYYY-MM-DD format
+            - check_out_date: Check-out date in YYYY-MM-DD format
 
     Returns:
-        A list of formatted hotel options.
+        A list of formatted hotel options with name, price, rating, amenities, etc.
+
+    Raises:
+        Exception: If the search fails or API key is missing
     """
+    api_key = os.getenv("SERP_API_KEY")
+    if not api_key:
+        raise ValueError("SERP_API_KEY environment variable is not set")
+
     search_params = {
-        "api_key": os.getenv("SERP_API_KEY"),
+        "api_key": api_key,
         "engine": "google_hotels",
         "hl": "en",
         "gl": "us",
         "q": hotel_request.location,
         "check_in_date": hotel_request.check_in_date,
         "check_out_date": hotel_request.check_out_date,
-        "currency": "USD"
+        "currency": "USD",
     }
 
-    logger.info(f"Hotel search params: {search_params}")
+    logger.info(f"Searching hotels with params: {search_params}")
     search_results = serpapi.search(search_params)
 
     properties = search_results.get("properties", [])[:10]  # Get top 10
@@ -139,25 +159,32 @@ async def searchHotels(hotel_request: HotelRequest):
             "rating": prop.get("overall_rating"),
             "reviews": prop.get("reviews"),
             "amenities": prop.get("amenities", [])[:5],
-            "link": prop.get("link")
+            "link": prop.get("link"),
         })
 
+    logger.info(f"Found {len(formatted_options)} hotel options")
     return formatted_options
 
 
 @router.post("/generate-trip")
-async def generate_trip(request: GenerateTripRequest):
-    """
-    Generate a comprehensive trip itinerary using OpenAI agent.
+async def generate_trip(request: GenerateTripRequest) -> dict:
+    """Generate a comprehensive trip itinerary using OpenAI agent.
 
     The agent autonomously handles travel planning by:
     - Parsing natural language travel requests
     - Extracting key travel parameters (dates, locations, preferences)
     - Making intelligent defaults when information is missing
     - Generating detailed, structured travel itineraries
-    """
-    from datetime import datetime
 
+    Args:
+        request: GenerateTripRequest containing the user's travel prompt and optional sessionId
+
+    Returns:
+        Dictionary containing the generated itinerary and sessionId
+
+    Raises:
+        HTTPException: If trip generation fails
+    """
     # Get current date for context
     current_date = datetime.now().strftime("%Y-%m-%d")
     current_month = datetime.now().strftime("%B %Y")
@@ -200,7 +227,7 @@ Analyze the user's travel request and create a comprehensive travel plan. Extrac
 **Output Format:**
 Generate a detailed, well-structured travel itinerary in markdown format with the following sections:
 
-# 🌍 Trip Overview
+# Trip Overview
 - **Destination:** [City, Country]
 - **Origin:** [Departure City]
 - **Duration:** [X days, Y nights]
@@ -211,51 +238,51 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ---
 
-# ✈️ Flight Options & Recommendations
+# Flight Options & Recommendations
 
 **Available Flight Options:**
 [List at least 3 flight options found from searchFlights tool. For each, include:]
 - **[Airline]** - [Price] ([Stops], [Duration])
-- **Route:** [Origin] → [Destination]
+- **Route:** [Origin] to [Destination]
 - **Schedule:** [Departure Time] - [Arrival Time]
 
-**🏆 Recommended Flight:**
+**Recommended Flight:**
 - **Airline:** [Recommended Airline]
 - **Reasoning:** [Why this is the best recommendation among the options]
 
 ---
 
-# 🏨 Accommodation Options & Recommendations
+# Accommodation Options & Recommendations
 
 **Available Hotel Options:**
 [List at least 3 hotel options found from searchHotels tool. For each, include:]
-- **[Hotel Name]** ([Rating]⭐) - [Price per night]
+- **[Hotel Name]** ([Rating] stars) - [Price per night]
 - **Key Amenities:** [List 2-3 key amenities]
 - **Link:** [Link to hotel]
 
-**🏆 Recommended Stay:**
+**Recommended Stay:**
 - **Hotel:** [Recommended Hotel Name]
 - **Reasoning:** [Why this is the best recommendation among the options]
 
 ---
 
-# 📅 Day-by-Day Itinerary
+# Day-by-Day Itinerary
 
 ## Day 1: [Date] - Arrival & [Theme]
 **Morning:**
-- 🛬 Arrive at [Airport Name]
-- 🚖 Transportation to hotel (recommended: [method], ~[time], ~$[cost])
-- 🏨 Check-in at hotel
+- Arrive at [Airport Name]
+- Transportation to hotel (recommended: [method], ~[time], ~$[cost])
+- Check-in at hotel
 
 **Afternoon:**
-- 🍽️ Lunch at [Restaurant/Area] - [Cuisine type]
-- 🏛️ [Activity/Attraction] ([Duration], [Cost if applicable])
+- Lunch at [Restaurant/Area] - [Cuisine type]
+- [Activity/Attraction] ([Duration], [Cost if applicable])
 
 **Evening:**
-- 🌆 [Evening activity]
-- 🍽️ Dinner recommendation: [Restaurant] - [Why recommended]
+- [Evening activity]
+- Dinner recommendation: [Restaurant] - [Why recommended]
 
-**💡 Tips:** [Local tips, what to know, what to avoid]
+**Tips:** [Local tips, what to know, what to avoid]
 
 ## Day 2: [Date] - [Theme]
 [Continue with similar structure for each day]
@@ -264,19 +291,19 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ## Day [Last]: [Date] - Departure
 **Morning:**
-- 🍳 Breakfast at hotel
-- 🎁 Last-minute shopping/activities
-- 🏨 Check-out
+- Breakfast at hotel
+- Last-minute shopping/activities
+- Check-out
 
 **Afternoon:**
-- 🚖 Transportation to airport
-- ✈️ Depart for [Origin]
+- Transportation to airport
+- Depart for [Origin]
 
 ---
 
-# 🎯 Must-Visit Attractions
+# Must-Visit Attractions
 
-1. **[Attraction Name]** 🏛️
+1. **[Attraction Name]**
    - **Best time to visit:** [Time/Day]
    - **Duration:** [Hours]
    - **Cost:** [Price/Free]
@@ -286,7 +313,7 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ---
 
-# 🍽️ Dining Recommendations
+# Dining Recommendations
 
 **Breakfast Spots:**
 - [Restaurant 1] - [Specialty]
@@ -307,7 +334,7 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ---
 
-# 🚇 Transportation Tips
+# Transportation Tips
 
 - **From Airport:** [Best options with estimated costs]
 - **Getting Around:** [Metro/Bus/Taxi/Walking recommendations]
@@ -316,7 +343,7 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ---
 
-# 💰 Budget Estimate
+# Budget Estimate
 
 | Category | Estimated Cost |
 |----------|---------------|
@@ -332,13 +359,13 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ---
 
-# 📝 Essential Travel Tips
+# Essential Travel Tips
 
 **Before You Go:**
-- 📋 [Visa requirements if applicable]
-- 💉 [Health/vaccination recommendations]
-- 💱 [Currency and exchange tips]
-- 🔌 [Power adapter needs]
+- [Visa requirements if applicable]
+- [Health/vaccination recommendations]
+- [Currency and exchange tips]
+- [Power adapter needs]
 
 **Packing Essentials:**
 - [Season-appropriate clothing recommendations]
@@ -360,7 +387,7 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ---
 
-# 🌟 Pro Tips
+# Pro Tips
 
 - [Insider tip 1]
 - [Insider tip 2]
@@ -370,7 +397,7 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 
 ---
 
-**🎉 Have an amazing trip! This itinerary is a flexible guide - feel free to adjust based on your energy levels and interests each day.**
+**Have an amazing trip! This itinerary is a flexible guide - feel free to adjust based on your energy levels and interests each day.**
 
 ---
 
@@ -381,7 +408,7 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
 - Make intelligent assumptions when information is missing, but note them
 - Tailor recommendations to the inferred travel style and budget
 - Include practical, actionable advice
-- Use emojis to make the itinerary visually appealing and easy to scan
+- Do NOT use emojis in the itinerary. ensure it is visually appealing through good use of markdown and structure instead.
 - Provide reasoning for major recommendations
 """
 
@@ -394,14 +421,21 @@ Generate a detailed, well-structured travel itinerary in markdown format with th
             tools=[log_planning_step, searchFlights, searchHotels]
         )
 
-        # Run the agent with the user's prompt
-        result = await Runner.run(agent, request.prompt)
+        session_id = request.sessionId
+        if session_id is None:
+            session_id = str(uuid.uuid4())
 
-        print(result)
+        session = SQLiteSession(session_id=session_id, db_path="sessions.db")
+
+        # Run the agent with the user's prompt
+        result = await Runner.run(agent, request.prompt, session=session)
+
+        logger.info(f"Trip generation completed for session: {session_id}")
 
         # Return structured response
         return {
-            "itinerary": result.final_output
+            "itinerary": result.final_output,
+            "sessionId": session_id,
         }
 
     except Exception as e:
